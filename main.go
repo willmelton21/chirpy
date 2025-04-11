@@ -42,15 +42,15 @@ func main() {
 		Handler: mux,
 		Addr: ":8080",
 	}
-	mux.HandleFunc("GET /healthz",func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("GET /api/healthz",func(w http.ResponseWriter, req *http.Request) {
 		
 		w.Header().Set("Content_Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	mux.HandleFunc("GET /metrics",apiCfg.metricsHandler)
-	mux.HandleFunc("POST /reset",apiCfg.resetHandler)
+	mux.HandleFunc("GET /api/metrics",apiCfg.metricsHandler)
+	mux.HandleFunc("POST /api/reset",apiCfg.resetHandler)
 	
 	err := servStruct.ListenAndServe()
 
