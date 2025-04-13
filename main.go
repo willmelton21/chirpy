@@ -34,25 +34,68 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) validate_chirp(w http.ResponseWriter, r *http.Request) {
    
    type parameters struct {
-      body string `json:"body"`
+      Body string `json:"body"`
+      }
+ type validResponse struct {
+      Valid bool `json:"valid"`
+      }
+ type errorResponse struct {
+      Error string `json:"error"`
       }
 
    decoder := json.NewDecoder(r.Body)
    params := parameters{}
+	errorResp := errorResponse{
+		Error: "Something went wrong"}
+	validResp := validResponse{
+		Valid : true,
+	}
    err := decoder.Decode(&params)
    if err != nil {
       
       log.Printf("Error decoding parameters: %s",err)
-      w.WriteHeader(500)
+	   dat, err := json.Marshal(errorResp)
+		if err != nil {
+			log.Printf("Erorr marshalling JSON: %s",err)
+      	w.WriteHeader(500)
+			return
+	}
+     w.Header().Set("Content-Type", "application/json")
+     w.WriteHeader(500)
+     w.Write(dat)
       return
    }
 
+	if len(params.Body) > 140 {
+		errorResp.Error = "Chirp is too long"
+		dat, err := json.Marshal(errorResp)
 
+		if err != nil {
+			log.Printf("Erorr marshalling JSON: %s",err)
+      	w.WriteHeader(500)
+			return
+			}
 
-   dat, err := json.Marshal(params)
+     w.Header().Set("Content-Type", "application/json")
+     w.WriteHeader(400)
+     w.Write(dat)
+      return
+
+	}
+
+   dat, err := json.Marshal(validResp)
    if err != nil {
       log.Printf("Error marshalling JSON: %s",err)
-      w.WriteHeader(500)
+		 dat, err := json.Marshal(errorResp)
+		if err != nil {
+			log.Printf("Erorr marshalling JSON: %s",err)
+      	w.WriteHeader(500)
+			return
+	}
+
+     w.Header().Set("Content-Type", "application/json")
+     w.WriteHeader(500)
+     w.Write(dat)
       return
    }
 
