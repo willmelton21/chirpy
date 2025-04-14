@@ -1,11 +1,12 @@
 package main
 
 import (
-	"net/http"
+	"encoding/json"
 	"fmt"
-   "sync/atomic"	
-   "encoding/json"
-   "log"
+	"log"
+	"net/http"
+	"strings"
+	"sync/atomic"
 )
 
 
@@ -13,6 +14,16 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 }
 
+type parameters struct {
+      Body string `json:"body"`
+      }
+
+ type ErrorResponse struct {
+      Error string `json:"error"`
+      }
+ type cleanedBody struct {
+      Body string `json:"cleaned_body"`
+      }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,77 +42,76 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 	cfg.fileserverHits.Store(0)
 }
 
-func (cfg *apiConfig) validate_chirp(w http.ResponseWriter, r *http.Request) {
-   
-   type parameters struct {
-      Body string `json:"body"`
-      }
- type validResponse struct {
-      Valid bool `json:"valid"`
-      }
- type errorResponse struct {
-      Error string `json:"error"`
-      }
+func FilterProfanity(in string) string{
 
-   decoder := json.NewDecoder(r.Body)
-   params := parameters{}
-	errorResp := errorResponse{
-		Error: "Something went wrong"}
-	validResp := validResponse{
-		Valid : true,
+
+	stringList := strings.Split(in," ")
+
+	for i := 0; i < len(stringList); i++ {
+		
+		if strings.ToLower(stringList[i]) == "kerfuffle" || strings.ToLower(stringList[i]) == "sharbert" || strings.ToLower(stringList[i]) == "fornax" {
+			replacementString := "****"
+			
+			stringList[i] = replacementString
+		}
 	}
-   err := decoder.Decode(&params)
-   if err != nil {
-      
-      log.Printf("Error decoding parameters: %s",err)
-	   dat, err := json.Marshal(errorResp)
+	return strings.Join(stringList," ")
+
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	
+	errResp :=  ErrorResponse{
+		Error: msg }
+
+	dat, err := json.Marshal(errResp)
 		if err != nil {
-			log.Printf("Erorr marshalling JSON: %s",err)
+			log.Printf("Error marshalling JSON: %s",err)
       	w.WriteHeader(500)
 			return
-	}
-     w.Header().Set("Content-Type", "application/json")
-     w.WriteHeader(500)
-     w.Write(dat)
-      return
-   }
+		  	} 
+   w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(dat)
+}
 
-	if len(params.Body) > 140 {
-		errorResp.Error = "Chirp is too long"
-		dat, err := json.Marshal(errorResp)
-
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	
+	dat ,err := json.Marshal(payload)
 		if err != nil {
-			log.Printf("Erorr marshalling JSON: %s",err)
+			log.Printf("Error marshalling JSON: %s",err)
       	w.WriteHeader(500)
 			return
 			}
 
-     w.Header().Set("Content-Type", "application/json")
-     w.WriteHeader(400)
-     w.Write(dat)
-      return
-
-	}
-
-   dat, err := json.Marshal(validResp)
-   if err != nil {
-      log.Printf("Error marshalling JSON: %s",err)
-		 dat, err := json.Marshal(errorResp)
-		if err != nil {
-			log.Printf("Erorr marshalling JSON: %s",err)
-      	w.WriteHeader(500)
-			return
-	}
-
-     w.Header().Set("Content-Type", "application/json")
-     w.WriteHeader(500)
-     w.Write(dat)
-      return
-   }
-
    w.Header().Set("Content-Type", "application/json")
-   w.WriteHeader(200)
-   w.Write(dat)
+	w.WriteHeader(code)
+	w.Write(dat)
+
+	}
+func (cfg *apiConfig) validate_chirp(w http.ResponseWriter, r *http.Request) {
+   
+   decoder := json.NewDecoder(r.Body)
+   params := parameters{}
+	
+   err := decoder.Decode(&params)
+   if err != nil {
+	   msg := fmt.Sprintf("Error decoding parameters: %s",err)
+		respondWithError(w, 500, msg)
+	  }
+
+	if len(params.Body) > 140 {
+		respondWithError(w,400,"Chirp is too long")
+      return
+
+	}
+
+	params.Body = FilterProfanity(params.Body)
+	cleanedStruct := cleanedBody{
+		Body: params.Body}	
+
+	respondWithJSON(w,200,cleanedStruct)
+	
 }
 
 func main() {
