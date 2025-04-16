@@ -1,3 +1,4 @@
 #ignore out build file
 out
 chirpy
+.env
