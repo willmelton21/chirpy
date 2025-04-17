@@ -9,12 +9,21 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
-
+	"time"
+	"github.com/google/uuid" 
 	"github.com/joho/godotenv"
 	"github.com/willmelton21/chirpy/internal/database"
 
 	_ "github.com/lib/pq"
 )
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+}
+
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
@@ -48,6 +57,28 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 
 	cfg.fileserverHits.Store(0)
 }
+
+func (cfg *apiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
+	var userParams User
+   decoder := json.NewDecoder(r.Body)
+	
+   err := decoder.Decode(&userParams)
+   if err != nil {
+	   msg := fmt.Sprintf("Error decoding parameters: %s",err)
+		respondWithError(w, 500, msg)
+	  }	
+
+	user, err := cfg.dbs.CreateUser(r.Context(), userParams.Email)
+	if err != nil {
+	   msg := fmt.Sprintf("Error creating user for DB: %s",err)
+		respondWithError(w, 500, msg)
+		return
+	 }
+
+	respondWithJSON(w,201,user)
+
+
+ }
 
 func FilterProfanity(in string) string{
 
@@ -166,6 +197,8 @@ func main() {
 	mux.HandleFunc("POST /admin/reset",apiCfg.resetHandler)
 
    mux.HandleFunc("POST /api/validate_chirp",apiCfg.validate_chirp)
+
+	mux.HandleFunc("POST /api/users",apiCfg.CreateUser)
 	
 	err = servStruct.ListenAndServe()
 
