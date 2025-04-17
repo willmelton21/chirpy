@@ -28,6 +28,7 @@ type User struct {
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	dbs *database.Queries
+   Platform string
 }
 
 type parameters struct {
@@ -47,6 +48,24 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 		cfg.fileserverHits.Add(1)
 		next.ServeHTTP(w,r)
 	})
+}
+
+func (cfg *apiConfig) ResetDB(w http.ResponseWriter, r *http.Request) {
+   
+   if cfg.Platform != "dev" {
+   msg := "Unauthorized Access"
+     respondWithError(w,403,msg) 
+     return
+   } else {
+      err := cfg.dbs.ResetTable(r.Context())  
+      if err != nil {
+	   msg := fmt.Sprintf("Error decoding parameters: %s",err)
+         respondWithError(w,500,msg)
+         return
+      }
+      w.WriteHeader(200)
+      w.Write([]byte("Hits reset to 0 and database reset to initial state."))
+   }
 }
 
 func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +174,7 @@ func (cfg *apiConfig) validate_chirp(w http.ResponseWriter, r *http.Request) {
 func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
+   platform := os.Getenv("PLATFORM")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		fmt.Errorf("error opening database %s",err)
@@ -168,6 +188,7 @@ func main() {
 	var apiCfg apiConfig
 
 	apiCfg.dbs = dbQueries
+   apiCfg.Platform = platform
 	
 		
 
@@ -199,6 +220,8 @@ func main() {
    mux.HandleFunc("POST /api/validate_chirp",apiCfg.validate_chirp)
 
 	mux.HandleFunc("POST /api/users",apiCfg.CreateUser)
+
+   mux.HandleFunc("POST /adim/reset",apiCfg.ResetDB)
 	
 	err = servStruct.ListenAndServe()
 
