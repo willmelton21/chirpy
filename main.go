@@ -16,6 +16,13 @@ import (
 
 	_ "github.com/lib/pq"
 )
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+   Body      string    `json:"body"`
+   UserID    uuid.UUID `json:"user_id"`
+}
 
 type User struct {
 	ID        uuid.UUID `json:"id"`
@@ -91,7 +98,7 @@ func (cfg *apiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
 	 }
    
    user := User{
-      ID: dbUser.ID.UUID,
+      ID: dbUser.ID,
       CreatedAt: dbUser.CreatedAt,
       UpdatedAt: dbUser.UpdatedAt,
       Email: dbUser.Email,
@@ -148,28 +155,40 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(dat)
 
 	}
-func (cfg *apiConfig) validate_chirp(w http.ResponseWriter, r *http.Request) {
-   
+func (cfg *apiConfig) CreateChirp(w http.ResponseWriter, r *http.Request) {
+   var chirpParams Chirp 
    decoder := json.NewDecoder(r.Body)
-   params := parameters{}
 	
-   err := decoder.Decode(&params)
+   err := decoder.Decode(&chirpParams)
    if err != nil {
 	   msg := fmt.Sprintf("Error decoding parameters: %s",err)
 		respondWithError(w, 500, msg)
-	  }
+	  }	
 
-	if len(params.Body) > 140 {
+  	if len(chirpParams.Body) > 140 {
 		respondWithError(w,400,"Chirp is too long")
       return
-
 	}
 
-	params.Body = FilterProfanity(params.Body)
-	cleanedStruct := cleanedBody{
-		Body: params.Body}	
+	chirpParams.Body = FilterProfanity(chirpParams.Body)
 
-	respondWithJSON(w,200,cleanedStruct)
+   CreatedChirp, err := cfg.dbs.CreateChirp(r.Context(), database.CreateChirpParams{Body: chirpParams.Body,UserID: chirpParams.UserID})
+	if err != nil {
+      msg := fmt.Sprintf("Error creating chirp for user: %s",err)
+		respondWithError(w, 500, msg)
+		return
+	 }
+
+   chirp := Chirp{
+      ID: CreatedChirp.ID.UUID,
+      CreatedAt: CreatedChirp.CreatedAt, 
+      UpdatedAt: CreatedChirp.UpdatedAt,
+      Body: CreatedChirp.Body, 
+      UserID: CreatedChirp.UserID,
+   }
+
+
+	respondWithJSON(w,201,chirp)
 	
 }
 
@@ -218,11 +237,12 @@ func main() {
       
       })
 
-   mux.HandleFunc("POST /api/validate_chirp",apiCfg.validate_chirp)
 
 	mux.HandleFunc("POST /api/users",apiCfg.CreateUser)
 
    mux.HandleFunc("POST /admin/reset",apiCfg.ResetDB)
+
+   mux.HandleFunc("POST /api/chirps",apiCfg.CreateChirp)
 	
 	err = servStruct.ListenAndServe()
 
