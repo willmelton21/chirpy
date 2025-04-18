@@ -72,10 +72,6 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprintf(w, "Hits: %d", cfg.fileserverHits.Load())
 }
-func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
-
-	cfg.fileserverHits.Store(0)
-}
 
 func (cfg *apiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var userParams User
@@ -87,13 +83,19 @@ func (cfg *apiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 500, msg)
 	  }	
 
-	user, err := cfg.dbs.CreateUser(r.Context(), userParams.Email)
+	dbUser, err := cfg.dbs.CreateUser(r.Context(), userParams.Email)
 	if err != nil {
 	   msg := fmt.Sprintf("Error creating user for DB: %s",err)
 		respondWithError(w, 500, msg)
 		return
 	 }
-
+   
+   user := User{
+      ID: dbUser.ID.UUID,
+      CreatedAt: dbUser.CreatedAt,
+      UpdatedAt: dbUser.UpdatedAt,
+      Email: dbUser.Email,
+   }
 	respondWithJSON(w,201,user)
 
 
@@ -215,13 +217,12 @@ func main() {
       fmt.Fprintf(w, "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>",visitCount)
       
       })
-	mux.HandleFunc("POST /admin/reset",apiCfg.resetHandler)
 
    mux.HandleFunc("POST /api/validate_chirp",apiCfg.validate_chirp)
 
 	mux.HandleFunc("POST /api/users",apiCfg.CreateUser)
 
-   mux.HandleFunc("POST /adim/reset",apiCfg.ResetDB)
+   mux.HandleFunc("POST /admin/reset",apiCfg.ResetDB)
 	
 	err = servStruct.ListenAndServe()
 
