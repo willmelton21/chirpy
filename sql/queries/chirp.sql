@@ -12,3 +12,7 @@ VALUES (
 -- name: GetChirps :many
 SELECT * FROM chirp
 ORDER BY created_at ASC;
+
+-- name: GetChirpByID :one
+SELECT * FROM chirp 
+WHERE id = $1;

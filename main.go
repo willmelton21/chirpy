@@ -53,8 +53,39 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		
 		cfg.fileserverHits.Add(1)
-		next.ServeHTTP(w,r)
+	next.ServeHTTP(w,r)
 	})
+}
+
+func (cfg *apiConfig) GetChirp(w http.ResponseWriter, r *http.Request) {
+	
+	currID := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(currID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	
+	chirp,err :=cfg.dbs.GetChirpByID(r.Context(),chirpID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+  chirpStruct := Chirp{
+      ID: chirp.ID,
+      CreatedAt: chirp.CreatedAt, 
+      UpdatedAt: chirp.UpdatedAt,
+      Body: chirp.Body, 
+      UserID: chirp.UserID,
+
+	
+   }
+
+
+	respondWithJSON(w,http.StatusOK,chirpStruct)
+
 }
 
 func (cfg *apiConfig) GetChirps(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +299,7 @@ func main() {
 
    mux.HandleFunc("GET /api/chirps",apiCfg.GetChirps)
 	
-   mux.HandleFunc("GET /api/chirps/{chripID}",apiCfg.GetChirp)
+   mux.HandleFunc("GET /api/chirps/{chirpID}",apiCfg.GetChirp)
 
 	err = servStruct.ListenAndServe()
 
