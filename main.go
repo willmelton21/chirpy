@@ -57,6 +57,28 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
+func (cfg *apiConfig) GetChirps(w http.ResponseWriter, r *http.Request) {
+   
+   dbResult,err := cfg.dbs.GetChirps(r.Context())
+   if err != nil {
+      msg := fmt.Sprintf("Error getting all chrips: %s",err)
+      respondWithError(w,500,msg)
+      return
+
+   }
+chirps := make([]Chirp, 0)
+for _, dbRow := range dbResult {
+    chirps = append(chirps, Chirp{
+        ID:        dbRow.ID,
+        Body:      dbRow.Body,
+        CreatedAt: dbRow.CreatedAt,
+        UpdatedAt: dbRow.UpdatedAt,
+        UserID:    dbRow.UserID,
+    })
+}
+   respondWithJSON(w,200,chirps)
+}
+
 func (cfg *apiConfig) ResetDB(w http.ResponseWriter, r *http.Request) {
    
    if cfg.Platform != "dev" {
@@ -180,7 +202,7 @@ func (cfg *apiConfig) CreateChirp(w http.ResponseWriter, r *http.Request) {
 	 }
 
    chirp := Chirp{
-      ID: CreatedChirp.ID.UUID,
+      ID: CreatedChirp.ID,
       CreatedAt: CreatedChirp.CreatedAt, 
       UpdatedAt: CreatedChirp.UpdatedAt,
       Body: CreatedChirp.Body, 
@@ -243,7 +265,11 @@ func main() {
    mux.HandleFunc("POST /admin/reset",apiCfg.ResetDB)
 
    mux.HandleFunc("POST /api/chirps",apiCfg.CreateChirp)
+
+   mux.HandleFunc("GET /api/chirps",apiCfg.GetChirps)
 	
+   mux.HandleFunc("GET /api/chirps/{chripID}",apiCfg.GetChirp)
+
 	err = servStruct.ListenAndServe()
 
 	fmt.Print("err is: ",err)
