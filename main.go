@@ -10,8 +10,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"github.com/google/uuid" 
+
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/willmelton21/chirpy/internal/auth"
 	"github.com/willmelton21/chirpy/internal/database"
 
 	_ "github.com/lib/pq"
@@ -29,6 +31,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Password  string    `json:"password"`
 }
 
 
@@ -55,6 +58,44 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 		cfg.fileserverHits.Add(1)
 	next.ServeHTTP(w,r)
 	})
+}
+
+
+func (cfg *apiConfig) Login(w http.ResponseWriter, r *http.Request) {
+
+	 
+    var userParams User 
+	 decoder := json.NewDecoder(r.Body)
+	
+   err := decoder.Decode(&userParams)
+   if err != nil {
+	   msg := fmt.Sprintf("Error decoding parameters: %s",err)
+		respondWithError(w, 500, msg)
+		return
+	  }	
+
+	user,err := cfg.dbs.GetUserByEmail(r.Context(),userParams.Email)
+	if err != nil {
+		 msg := fmt.Sprintf("Error getting user from email: %s",err)
+		respondWithError(w, 500, msg)
+		return
+	}
+
+	err = auth.CheckPasswordHash(user.HashedPassword,userParams.Password)
+	if err != nil {
+		 msg := fmt.Sprintf("Unauthorized: %s",err)
+		respondWithError(w, http.StatusUnauthorized, msg)
+		return
+	}
+
+	userStruct := User{
+      ID: user.ID,
+      CreatedAt: user.CreatedAt,
+      UpdatedAt: user.UpdatedAt,
+      Email: user.Email,
+   }
+	respondWithJSON(w,200,userStruct)
+
 }
 
 func (cfg *apiConfig) GetChirp(w http.ResponseWriter, r *http.Request) {
@@ -141,9 +182,18 @@ func (cfg *apiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
    if err != nil {
 	   msg := fmt.Sprintf("Error decoding parameters: %s",err)
 		respondWithError(w, 500, msg)
+		return
 	  }	
 
-	dbUser, err := cfg.dbs.CreateUser(r.Context(), userParams.Email)
+	hPass ,err := auth.HashPassword(userParams.Password) 
+	if err != nil {
+		fmt.Errorf("hashing password failed %s",err)
+		return
+	}
+
+
+
+	dbUser, err := cfg.dbs.CreateUser(r.Context(),database.CreateUserParams{Email: userParams.Email,HashedPassword: hPass})
 	if err != nil {
 	   msg := fmt.Sprintf("Error creating user for DB: %s",err)
 		respondWithError(w, 500, msg)
@@ -155,6 +205,7 @@ func (cfg *apiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
       CreatedAt: dbUser.CreatedAt,
       UpdatedAt: dbUser.UpdatedAt,
       Email: dbUser.Email,
+		Password: dbUser.HashedPassword,
    }
 	respondWithJSON(w,201,user)
 
@@ -300,6 +351,8 @@ func main() {
    mux.HandleFunc("GET /api/chirps",apiCfg.GetChirps)
 	
    mux.HandleFunc("GET /api/chirps/{chirpID}",apiCfg.GetChirp)
+
+   mux.HandleFunc("POST /api/login",apiCfg.Login)
 
 	err = servStruct.ListenAndServe()
 
