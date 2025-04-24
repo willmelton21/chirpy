@@ -3,42 +3,12 @@ package auth
 import (
 	"testing"
 	"github.com/stretchr/testify/assert"
-	"errors"
-	"fmt"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"time"
+	"net/http"
 )
 
-func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
-	
-	claims := &jwt.RegisteredClaims{}
 
-
-	token, err := jwt.ParseWithClaims(tokenString,claims, func(token *jwt.Token) (interface{}, error) {
-		
-		if _,ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		return []byte(tokenSecret),nil
-	})
-
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	if !token.Valid {
-		return uuid.Nil, errors.New("invalid token")
-	}
-
-	userID, err := uuid.Parse(claims.Subject)
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	return  userID, nil
-}
 
 
 
@@ -71,5 +41,49 @@ func TestMakeAndValidateJWT(t *testing.T) {
 	_, err = ValidateJWT("not.a.valid.token",secret)
 	assert.Error(t,err)
 
+}
 
+func TestGetBearerToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		headers   http.Header
+		wantToken string
+		wantErr   bool
+	}{
+		{
+			name: "Valid Bearer token",
+			headers: http.Header{
+				"Authorization": []string{"Bearer valid_token"},
+			},
+			wantToken: "valid_token",
+			wantErr:   false,
+		},
+		{
+			name:      "Missing Authorization header",
+			headers:   http.Header{},
+			wantToken: "",
+			wantErr:   true,
+		},
+		{
+			name: "Malformed Authorization header",
+			headers: http.Header{
+				"Authorization": []string{"InvalidBearer token"},
+			},
+			wantToken: "",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotToken, err := GetBearerToken(tt.headers)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetBearerToken() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotToken != tt.wantToken {
+				t.Errorf("GetBearerToken() gotToken = %v, want %v", gotToken, tt.wantToken)
+			}
+		})
+	}
 }
