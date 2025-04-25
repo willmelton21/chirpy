@@ -39,7 +39,6 @@ type User struct {
 type LoginRequest struct {
 	Email            string `json:"email"`
 	Password         string `json:"password"`
-	ExpiresInSeconds int    `json: "expires_in_seconds,omitempty"`
 }
 
 type apiConfig struct {
@@ -68,11 +67,70 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
+func (cfg *apiConfig) Revoke(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")	
+	if authHeader == ""{
+		respondWithError(w, http.StatusBadRequest, "Header auth token was empty")
+		return
+	}
+	splitAuth := strings.Split(authHeader, " ")
+	if len(splitAuth) < 2 || splitAuth[0] != "Bearer" {
+		respondWithError(w, http.StatusBadRequest, "malformed authorization header")
+		return
+	}
+
+	token := splitAuth[1]
+
+	 err := cfg.dbs.RevokeToken(r.Context(),token)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Token couldn't be revoked")
+		return
+	}	
+	respondWithJSON(w,204,"")
+	return
+}
+
+func (cfg *apiConfig) Refresh(w http.ResponseWriter, r *http.Request) {
+
+	type tokenResponse struct {
+		Token string `json:"token"`
+	}
+
+	authHeader := r.Header.Get("Authorization")	
+	if authHeader == ""{
+		respondWithError(w, http.StatusBadRequest, "Header auth token was empty")
+		return
+	}
+	splitAuth := strings.Split(authHeader, " ")
+	if len(splitAuth) < 2 || splitAuth[0] != "Bearer" {
+		respondWithError(w, http.StatusBadRequest, "malformed authorization header")
+		return
+	}
+
+	token := splitAuth[1]
+
+	validUser, err := cfg.dbs.GetUserFromRefreshToken(r.Context(),token)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Token not in database or expired")
+		return
+	}
+
+	accessToken, err := auth.MakeJWT(validUser.ID,cfg.Secret,time.Hour)
+
+
+
+	tokenStruct := tokenResponse{Token: accessToken}
+
+	respondWithJSON(w,http.StatusOK,tokenStruct)
+
+
+}
+
+
 func (cfg *apiConfig) Login(w http.ResponseWriter, r *http.Request) {
 type parameters struct {
 		Password         string `json:"password"`
 		Email            string `json:"email"`
-		ExpiresInSeconds int    `json:"expires_in_seconds"`
 	}
 	type response struct {
 		User
@@ -101,9 +159,7 @@ type parameters struct {
 	}
 
 	expirationTime := time.Hour
-	if params.ExpiresInSeconds > 0 && params.ExpiresInSeconds < 3600 {
-		expirationTime = time.Duration(params.ExpiresInSeconds) * time.Second
-	}
+	
 
 	accessToken, err := auth.MakeJWT(
 		user.ID,
@@ -115,6 +171,16 @@ type parameters struct {
 		return
 	}
 
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create refreshToken")
+	}
+
+	expireTime := time.Now().AddDate(0,0,60) 
+
+   cfg.dbs.CreateTokenDB(r.Context(), database.CreateTokenDBParams{Token: refreshToken, UserID: user.ID,ExpiresAt: expireTime })
+
+
 	respondWithJSON(w, http.StatusOK, response{
 		User: User{
 			ID:        user.ID,
@@ -123,6 +189,7 @@ type parameters struct {
 			Email:     user.Email,
 		},
 		Token: accessToken,
+		RefreshToken: refreshToken,
 	})
 
 
@@ -388,6 +455,10 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.GetChirp)
 
 	mux.HandleFunc("POST /api/login", apiCfg.Login)
+
+	mux.HandleFunc("POST /api/refresh", apiCfg.Refresh)
+
+	mux.HandleFunc("POST /api/revoke", apiCfg.Revoke)
 
 	err = servStruct.ListenAndServe()
 
