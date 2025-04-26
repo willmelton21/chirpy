@@ -378,6 +378,30 @@ func (cfg *apiConfig) GetChirp(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) GetChirps(w http.ResponseWriter, r *http.Request) {
 
+	s := r.URL.Query().Get("author_id")
+	if s != "" {
+    	parsedID, err := uuid.Parse(s)
+		dbResult, err := cfg.dbs.GetChirpsByID(r.Context(),parsedID)
+	if err != nil {
+		msg := fmt.Sprintf("Error getting all chrips: %s", err)
+		respondWithError(w, 500, msg)
+		return
+
+	}
+	chirps := make([]Chirp, 0)
+	for _, dbRow := range dbResult {
+		chirps = append(chirps, Chirp{
+			ID:        dbRow.ID,
+			Body:      dbRow.Body,
+			CreatedAt: dbRow.CreatedAt,
+			UpdatedAt: dbRow.UpdatedAt,
+			UserID:    dbRow.UserID,
+		})
+	}
+	respondWithJSON(w, 200, chirps)
+	return
+	}
+
 	dbResult, err := cfg.dbs.GetChirps(r.Context())
 	if err != nil {
 		msg := fmt.Sprintf("Error getting all chrips: %s", err)
@@ -396,6 +420,7 @@ func (cfg *apiConfig) GetChirps(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	respondWithJSON(w, 200, chirps)
+	return
 }
 
 func (cfg *apiConfig) ResetDB(w http.ResponseWriter, r *http.Request) {
