@@ -67,6 +67,53 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
+func (cfg *apiConfig) DeleteChirp(w http.ResponseWriter, r *http.Request) {
+  	authHeader := r.Header.Get("Authorization")	
+	if authHeader == ""{
+		respondWithError(w, http.StatusUnauthorized, "Header auth token was empty")
+		return
+	}
+	splitAuth := strings.Split(authHeader, " ")
+	if len(splitAuth) < 2 || splitAuth[0] != "Bearer" {
+		respondWithError(w, http.StatusBadRequest, "malformed authorization header")
+		return
+	}
+
+	token := splitAuth[1]
+
+   tokenSecret := os.Getenv("SECRET")
+
+	authedUserID, err := auth.ValidateJWT(token,tokenSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't Get user from token")
+		return
+	}
+
+	currID := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(currID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+   chirp,err := cfg.dbs.GetChirpByID(r.Context(), chirpID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+   if chirp.UserID != authedUserID {
+      respondWithError(w,403,"Chirp User ID did not match authorized user ID")
+      return
+   }
+
+   err = cfg.dbs.DeleteChirpByID(r.Context(), chirpID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	respondWithJSON(w,204,"")
+}
 
 func (cfg *apiConfig) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -90,7 +137,7 @@ func (cfg *apiConfig) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := auth.GetUserIDFromToken(token)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "COuldn't Get user from token")
+		respondWithError(w, http.StatusUnauthorized, "Couldn't Get user from token")
 		return
 	}
 
@@ -518,6 +565,8 @@ func main() {
 	mux.HandleFunc("POST /api/revoke", apiCfg.Revoke)
 
 	mux.HandleFunc("PUT /api/users", apiCfg.UpdateUserInfo)
+
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.DeleteChirp)
 
 	err = servStruct.ListenAndServe()
 
