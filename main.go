@@ -34,6 +34,7 @@ type User struct {
 	Email     string    `json:"email"`
 	Password  string    `json:"password"`
 	Token     string    `json:"Token"`
+	Is_Chirpy_Red bool  `json:"is_chirpy_red"`
 }
 
 type LoginRequest struct {
@@ -65,6 +66,40 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 		cfg.fileserverHits.Add(1)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (cfg *apiConfig) UpgradeUser(w http.ResponseWriter, r *http.Request) {
+	type Data struct {
+		User_id string `json:"user_id"`
+	}
+
+	type upgradeParams struct {
+		Event string `json:"event"`
+		Data  Data   `json:"data"`   
+	}
+	
+	decoder := json.NewDecoder(r.Body)
+   var upgradeStruct upgradeParams
+	err := decoder.Decode(&upgradeStruct)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+		return
+	}
+
+	if upgradeStruct.Event != "user.upgraded" {
+		respondWithJSON(w,204,"")
+		return
+	}
+	parsedID, err := uuid.Parse(upgradeStruct.Data.User_id)
+	err = cfg.dbs.Upgradeuser(r.Context(),uuid.UUID(parsedID))
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Couldn't Find Upgrade User")
+		return
+	}
+
+
+	respondWithJSON(w,204,"")
+	return
 }
 
 func (cfg *apiConfig) DeleteChirp(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +200,7 @@ func (cfg *apiConfig) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: updatedUser.CreatedAt,
 			UpdatedAt: updatedUser.UpdatedAt,
 			Email:     updatedUser.Email,
+		   Is_Chirpy_Red: updatedUser.IsChirpyRed.Bool,
 		}
 
 	respondWithJSON(w, http.StatusOK,userStruct)
@@ -291,6 +327,7 @@ type parameters struct {
 			CreatedAt: user.CreatedAt,
 			UpdatedAt: user.UpdatedAt,
 			Email:     user.Email,
+		   Is_Chirpy_Red: user.IsChirpyRed.Bool,
 		},
 		Token: accessToken,
 		RefreshToken: refreshToken,
@@ -401,6 +438,8 @@ func (cfg *apiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: dbUser.UpdatedAt,
 		Email:     dbUser.Email,
 		Password:  dbUser.HashedPassword,
+		Is_Chirpy_Red: dbUser.IsChirpyRed.Bool,
+
 	}
 	respondWithJSON(w, 201, user)
 
@@ -567,6 +606,8 @@ func main() {
 	mux.HandleFunc("PUT /api/users", apiCfg.UpdateUserInfo)
 
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.DeleteChirp)
+
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.UpgradeUser)
 
 	err = servStruct.ListenAndServe()
 
