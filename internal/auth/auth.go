@@ -35,6 +35,22 @@ func MakeRefreshToken() (string, error) {
 	return encodedKey, nil
 }
 
+func GetAPIKey(headers http.Header) (string, error) {
+
+	authHeader := headers.Get("Authorization")	
+	if authHeader == ""{
+		return "",fmt.Errorf("Couldn't Get Header Auth")
+	}
+	splitAuth := strings.Split(authHeader, " ")
+	if len(splitAuth) < 2 || splitAuth[0] != "ApiKey" {
+		return "",fmt.Errorf("Malformed Auth Header")
+	}
+
+	token := splitAuth[1]
+
+	return token,nil
+}
+
 // HashPassword -
 func HashPassword(password string) (string, error) {
 	dat, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

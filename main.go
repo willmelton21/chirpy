@@ -77,10 +77,23 @@ func (cfg *apiConfig) UpgradeUser(w http.ResponseWriter, r *http.Request) {
 		Event string `json:"event"`
 		Data  Data   `json:"data"`   
 	}
+
+	key, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		respondWithError(w,401,"Couldn't GetApi key from  header")
+		return
+	}
+
+	if key != os.Getenv("POLKA_KEY") {
+		respondWithError(w,401,"Key does not match .env key")
+		return
+
+
+	}
 	
 	decoder := json.NewDecoder(r.Body)
    var upgradeStruct upgradeParams
-	err := decoder.Decode(&upgradeStruct)
+	err = decoder.Decode(&upgradeStruct)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
 		return
