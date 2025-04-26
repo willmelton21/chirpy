@@ -67,6 +67,63 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
+
+func (cfg *apiConfig) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
+
+	type parameters struct {
+		Password         string `json:"password"`
+		Email            string `json:"email"`
+	}
+
+	authHeader := r.Header.Get("Authorization")	
+	if authHeader == ""{
+		respondWithError(w, http.StatusUnauthorized, "Header auth token was empty")
+		return
+	}
+	splitAuth := strings.Split(authHeader, " ")
+	if len(splitAuth) < 2 || splitAuth[0] != "Bearer" {
+		respondWithError(w, http.StatusBadRequest, "malformed authorization header")
+		return
+	}
+
+	token := splitAuth[1]
+
+	userID, err := auth.GetUserIDFromToken(token)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "COuldn't Get user from token")
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err = decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "couldn't hash password")
+		return
+	}
+
+	updatedUser, err := cfg.dbs.UpdateEmailAndPass(r.Context(),database.UpdateEmailAndPassParams{Email: params.Email, HashedPassword: hashedPassword,ID: userID})
+	if err != nil {
+		respondWithError(w,http.StatusInternalServerError, "Couldn't update credentials")
+	}
+
+	userStruct := User{
+			ID:        updatedUser.ID,
+			CreatedAt: updatedUser.CreatedAt,
+			UpdatedAt: updatedUser.UpdatedAt,
+			Email:     updatedUser.Email,
+		}
+
+	respondWithJSON(w, http.StatusOK,userStruct)
+
+}
+
 func (cfg *apiConfig) Revoke(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")	
 	if authHeader == ""{
@@ -459,6 +516,8 @@ func main() {
 	mux.HandleFunc("POST /api/refresh", apiCfg.Refresh)
 
 	mux.HandleFunc("POST /api/revoke", apiCfg.Revoke)
+
+	mux.HandleFunc("PUT /api/users", apiCfg.UpdateUserInfo)
 
 	err = servStruct.ListenAndServe()
 

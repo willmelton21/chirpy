@@ -5,12 +5,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	"net/http"
-	"strings"
-	"time"
 )
 
 type TokenType string
@@ -45,6 +47,39 @@ func HashPassword(password string) (string, error) {
 // CheckPasswordHash -
 func CheckPasswordHash(password, hash string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+}
+
+func GetUserIDFromToken(tokenString string) (uuid.UUID, error) {
+ // Parse the token
+	tokenSecret := os.Getenv("SECRET")
+    token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+        return []byte(tokenSecret), nil
+    })
+    
+    if err != nil {
+        return uuid.Nil, err
+    }
+    
+    // Extract claims
+    if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+        // Get the subject claim which contains the user ID
+        sub, ok := claims["sub"].(string)
+        if !ok {
+            return uuid.Nil, fmt.Errorf("invalid subject in token")
+        }
+        
+        // Parse the string back to UUID
+        userID, err := uuid.Parse(sub)
+        if err != nil {
+            return uuid.Nil, fmt.Errorf("invalid user ID format in token")
+        }
+        
+        return userID, nil
+    }
+    
+    return uuid.Nil, fmt.Errorf("invalid token")
+
+
 }
 
 // MakeJWT -
